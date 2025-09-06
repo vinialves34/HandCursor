@@ -1,7 +1,9 @@
 import { Server } from "socket.io";
 import { createServer } from "node:http";
 import express from "express";
-import robot from "robotjs";
+import { mouse, Button, Point } from "@nut-tree-fork/nut-js";
+
+mouse.config.mouseSpeed = 1000;
 
 const app = express();
 
@@ -14,18 +16,20 @@ const io = new Server(httpServer, {
 });
 
 io.on("connection", (socket) => {
-  console.log("Socket connected!");
-  console.log("Connection Id:", socket.id);
+  console.log("✅ Socket conectado!");
 
-  socket.on("position", (position) => {
-    const coordinates = JSON.parse(position);
+  socket.on("position", async (position) => {
+    try {
+      const coordinates = JSON.parse(position);
 
-    console.log("Coordenadas:", coordinates);
-    
-    robot.moveMouse(
-      coordinates.wrist.x,
-      coordinates.wrist.y
-    );
+      // console.log("Coordenadas:", coordinates);
+
+      await mouse.move(
+        new Point(coordinates.wrist.x, coordinates.wrist.y)
+      );
+    } catch (error) {
+      console.error("❌ Erro ao processar dados:", error);
+    }
   });
 });
 

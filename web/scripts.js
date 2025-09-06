@@ -1,13 +1,20 @@
 import * as tfCore from "@tensorflow/tfjs-core";
 import * as tfConverter from "@tensorflow/tfjs-converter";
 import * as tfWebgl from "@tensorflow/tfjs-backend-webgl";
-import * as handpose from "@tensorflow-models/handpose";
+import * as handPoseDetection from "@tensorflow-models/hand-pose-detection";
 import { io } from "socket.io-client";
 
-let socket;
-
 await main();
-initSocket();
+
+async function initSocketConnection() {
+  const socket = io("http://localhost:5000");
+
+  socket.on("connect", () => {
+    console.log("✅ Socket conectado!");
+  });
+
+  return socket;
+}
 
 async function main() {
   const video = document.querySelector("#video");
@@ -18,23 +25,40 @@ async function main() {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
     video.srcObject = stream;
 
-    const model = await handpose.load();
-    console.log("✅ Modelo carregado");
+    await new Promise((resolve) => {
+      video.onplaying = () => resolve();
+      video.play();
+    });
+
+    const detector = await handPoseDetection.createDetector(
+      handPoseDetection.SupportedModels.MediaPipeHands,
+      {
+        runtime: "tfjs",
+        modelType: "full", // "full" é mais preciso mas mais pesado
+      }
+    );
+    console.log("✅ Modelo carregado!");
+
+    const socketConnection = await initSocketConnection();
 
     const detectMove = async () => {
-      const predictions = await model.estimateHands(video);
+      const hands = await detector.estimateHands(video);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      if (predictions.length > 0) {
-        const keypoints = predictions[0].landmarks;
-        const positions = await getPositions(keypoints, ctx);
-
-        console.log("Posições", positions);
+      hands.forEach(async (hand) => {
+        const positions = await getPositions(hand.keypoints);
         
-        sendPositions(positions);
-      }
+        await sendPositions(positions, socketConnection);
+        
+        hand.keypoints.forEach((point) => {
+          ctx.fillStyle = "red";
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI);
+          ctx.fill();
+        });
+      });
 
       requestAnimationFrame(detectMove);
     }
@@ -45,33 +69,19 @@ async function main() {
   }
 }
 
-async function initSocket() {
-  socket = io("http://localhost:5000");
-
-  socket.on("connect", () => {
-    console.log("Socket connected!");
-    console.log("Connection Id:", socket.id);
-  });
-}
-
-async function getPositions(keypoints, ctx) {
-  const [indexPositionX, indexPositionY] = keypoints[8]; //Ponta do dedo indicador
-  const [middlePositionX, middlePositionY] = keypoints[12]; //Ponta do dedo médio
-  const [wristPositionX, wristPositionY] = keypoints[0]; //Posição do pulso
-  
-  ctx.fillStyle = "red";
-  ctx.fillRect(indexPositionX - 5, indexPositionY - 5, 10, 10);
-  ctx.fillRect(middlePositionX - 5, middlePositionY - 5, 10, 10);
-  ctx.fillRect(wristPositionX - 5, wristPositionY - 5, 10, 10);
+async function getPositions(keypoints) {
+  const { x: primaryPositionX, y: primaryPositionY } = keypoints[8]; //Ponta do dedo indicador
+  const { x: secondPositionX, y: secondPositionY } = keypoints[4]; //Ponta do dedo polegar
+  const { x: wristPositionX, y: wristPositionY } = keypoints[0]; //Posição do pulso
 
   return {
-    indexFinger: {
-      x: indexPositionX,
-      y: indexPositionY
+    primaryFinger: {
+      x: primaryPositionX,
+      y: primaryPositionY
     },
-    middleFinger: {
-      x: middlePositionX,
-      y: middlePositionY
+    secondFinger: {
+      x: secondPositionX,
+      y: secondPositionY
     },
     wrist: {
       x: wristPositionX,
@@ -80,9 +90,8 @@ async function getPositions(keypoints, ctx) {
   }
 }
 
-async function sendPositions(positions) {
-  // console.log("Recebendo dados:", positions);
-  console.log("Socket", socket);
+async function sendPositions(positions, socketConnection) {
+  console.log("Socket", socketConnection);
   
-  socket.emit("position", JSON.stringify(positions));
+  socketConnection.emit("position", JSON.stringify(positions));
 }

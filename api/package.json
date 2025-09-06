@@ -1,20 +1,19 @@
 {
   "name": "api-HandCursor",
   "version": "1.0.0",
-  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node --watch server.js"
+    "start-api": "node --watch server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
     "@tensorflow/tfjs-node": "^4.22.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "robotjs": "^0.6.0",
     "socket.io": "^4.8.1"
   }
 }
